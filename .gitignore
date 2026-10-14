@@ -1,0 +1,19 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.py[cod]
+node_modules/
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+# Local credentials and private configuration
+.aws/
+*.pem
+*.key
+credentials.json

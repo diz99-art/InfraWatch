@@ -1,0 +1,172 @@
+# InfraWatch
+
+여러 서버의 CPU, 메모리, 디스크, 네트워크 상태를 수집하고 실시간 대시보드, 장애 감지·알림 및 장애 이력 분석을 제공하기 위한 서버 통합 모니터링 웹서비스입니다.
+
+취업용 개발자 포트폴리오로서 API 설계, 테스트, 운영 관측과 단계적인 제품 개발 과정을 보여주는 것이 목적입니다. Stage 0은 실행 구조와 API 연결 기반만 구현합니다. 실제 서버 수치나 가짜 장애 데이터는 표시하지 않습니다.
+
+## 현재 상태
+
+2026-10-14 Stage 0 최종 안정화를 완료했습니다. Vite 7.1.7 → 7.3.7, Vitest 3.2.4 → 4.1.11, typescript-eslint 8.44.1 → 8.71.2를 업데이트하고 잠금 파일 기반 `npm ci` 재설치까지 확인했습니다. 최종 전체·운영 npm audit은 모두 **0개**이며, 실제 Safari에서 연결 성공 → 백엔드 중단 후 다시 확인 → 연결 실패 → 백엔드 재시작 후 재시도 → 연결 성공 복구를 확인했습니다.
+
+기존 pytest 3개와 Vitest 6개, pip check, Ruff, TypeScript, ESLint, Prettier 및 production build가 다시 통과했습니다. pytest의 DeprecationWarning 6개는 Starlette의 AnyIO 별칭과 FastAPI의 asyncio.iscoroutinefunction 호출에서 발생하며 억제하지 않았습니다. 후자는 Python 3.16 전 호환성 유지보수가 필요합니다. 상세 위험·패키지별 대응·집계 차이·브라우저 검증·제한은 [최종 안정화 기록](docs/stage0-stabilization.md)을 참고하세요. 현재 환경에서 Stage 0은 종료 가능하며 Stage 1 기능은 추가하지 않았습니다.
+
+### 이전 검증 이력 (2026-10-13)
+
+2026-10-13 macOS에서 의존성 설치, 잠금 파일 생성 및 재설치, 전체 테스트·품질 검사·production build를 검증했습니다. PyPI와 npm 레지스트리는 현재 Codex 세션에서 모두 HTTP 200을 반환했습니다. Python 3.14.4에서 설치·pytest·Uvicorn 실행이 성공했습니다.
+
+백엔드 및 Vite 프록시의 `/api/health`는 HTTP 200과 계약 JSON을 반환했고, Safari에서 연결 중 → 연결 성공을 확인했습니다. 백엔드 중단 시 프록시 HTTP 500은 확인했으나, 브라우저 제어 도구 오류와 활성 창 변경으로 실제 UI의 연결 실패 → 재시도 복구 확인은 남아 있습니다. 당시에는 이 항목이 미완료였으며, 위 2026-10-14 검증에서 완료했습니다.
+
+Git 저장소는 `.git` 쓰기 권한 승인 후 초기화했습니다. commit·push는 하지 않았습니다. 설치 과정에서 npm은 취약점 13개(중간 1, 높음 10, 치명적 2)를 보고했고 별도 `npm audit --json`은 15개(중간 3, 높음 10, 치명적 2)를 보고했습니다. 감사 결과와 설치 요약의 집계 차이를 그대로 기록하며, 강제 업데이트는 하지 않았습니다. 당시 남긴 보안 검토 항목은 위 최종 안정화에서 처리했습니다.
+
+## 기술 스택
+
+- 백엔드: Python 3.11 이상, FastAPI, Uvicorn, pytest, Ruff
+- 프론트엔드: Node.js 22.12 이상, React, TypeScript, Vite, Vitest, Testing Library
+- 품질 검사: ESLint, Prettier
+- 향후: PostgreSQL, Docker Compose, psutil, Recharts, 필요 시 WebSocket
+
+작성 시 확인한 macOS 도구는 Python 3.14.4, Node.js 24.21.0, npm 11.19.0입니다. 시스템 설정은 변경하지 않습니다.
+
+## 구조
+
+```text
+InfraWatch/
+├── backend/
+│   ├── app/main.py          # 앱 팩토리, health API, 오류 처리
+│   ├── tests/test_health.py
+│   ├── pyproject.toml       # 의존성·테스트·Ruff 설정
+│   ├── requirements.in     # 고정된 직접 의존성
+│   └── .env.example
+├── frontend/
+│   ├── src/                # 화면, health 요청, 테스트
+│   ├── vite.config.ts      # localhost 및 개발 API 프록시
+│   ├── package.json
+│   └── .env.example
+├── README.md
+├── AGENTS.md
+└── .gitignore
+```
+
+## 설치 및 잠금 파일 생성
+
+프로젝트 루트에서 실행합니다. `.env`는 선택 사항이며 기본 주소로 실행하면 복사할 필요가 없습니다.
+
+```sh
+python3 -m venv backend/.venv
+backend/.venv/bin/python -m pip install -r backend/requirements.in
+# 신규 의존성을 확인한 후 전체 전이 의존성을 잠급니다.
+backend/.venv/bin/python -m pip freeze > backend/requirements.lock
+
+cd frontend
+npm install
+# npm install이 package-lock.json을 생성합니다.
+cd ..
+```
+
+잠금 파일 생성 후 팀에서 검토하고 Git에 포함하세요. 이후 깨끗한 환경에서는 다음 명령을 사용합니다.
+
+```sh
+backend/.venv/bin/python -m pip install -r backend/requirements.lock
+cd frontend
+npm ci
+```
+
+`requirements.in`과 `package.json`은 직접 의존성 목록이며, `requirements.lock`과 `package-lock.json`은 실제 해결된 전이 의존성을 포함합니다. 두 잠금 파일 기반 재설치를 확인했습니다. Python의 플랫폼별 패키지는 지원 대상 환경에서 다시 설치 검증해야 합니다.
+
+## 실행
+
+터미널 1 — 프로젝트 루트:
+
+```sh
+cd backend
+.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+터미널 2 — 프로젝트 루트:
+
+```sh
+cd frontend
+npm run dev
+```
+
+브라우저에서 <http://127.0.0.1:5173>을 엽니다. API 문서는 <http://127.0.0.1:8000/docs>입니다. 종료는 각 터미널에서 Ctrl+C입니다.
+
+```sh
+curl --fail http://127.0.0.1:8000/api/health
+# 기대 응답: {"status":"ok","service":"InfraWatch"}
+curl --fail http://127.0.0.1:5173/api/health
+# 개발 프록시를 거쳐 같은 응답을 기대합니다.
+```
+
+화면은 연결 중 → 연결 성공 또는 연결 실패를 구분합니다. 요청 제한 시간은 5초이고, 다시 확인 버튼으로 재요청합니다. 백엔드를 종료한 다음 다시 확인하면 실패 상태를 검증할 수 있습니다. 연결 상태는 마지막 요청 결과이며 자동 갱신하지 않습니다. health는 앱 생존 확인이며 서버 자원이나 DB 준비 상태를 확인하지 않습니다.
+
+### 환경 변수
+
+`frontend/.env.example`을 `frontend/.env`로 복사할 수 있습니다.
+
+- `API_PROXY_TARGET`: 개발 프록시 대상. 기본 `http://127.0.0.1:8000`.
+- `VITE_API_BASE_URL`: 브라우저 요청의 기본 URL. 기본 빈 문자열로 동일 출처 `/api/health` 호출.
+- `VITE_` 값은 공개 번들에 포함되므로 비밀번호·토큰을 넣지 않습니다.
+- 환경 변수 변경 후 Vite를 재시작합니다.
+
+백엔드의 `.env.example`은 Uvicorn 셸 변수 예시입니다. 자동 로딩하지 않으며 필요하면 `export UVICORN_HOST=127.0.0.1` 등으로 설정합니다. 위 실행 명령의 CLI 옵션이 우선합니다.
+
+개발은 Vite 프록시로 동일 출처를 유지해 CORS 설정이 필요 없습니다. 직접 다른 출처로 요청하려면 명시적인 CORS 정책이 필요하며 현재 구현하지 않았습니다. 프로덕션 배포에서는 `/api`를 백엔드로 전달하는 역방향 프록시를 별도로 구성해야 합니다. Vite 개발 프록시는 배포 번들의 일부가 아니고 `npm run preview`에서도 API 프록시를 제공하지 않습니다.
+
+## 테스트·빌드·품질 검사
+
+프로젝트 루트:
+
+```sh
+cd backend
+.venv/bin/python -m pytest
+.venv/bin/python -m ruff check .
+.venv/bin/python -m ruff format --check .
+cd ../frontend
+npm test
+npm audit
+npm audit --omit=dev
+npm run typecheck
+npm run build
+npm run lint
+npm run format:check
+```
+
+포맷 수정은 백엔드에서 `.venv/bin/python -m ruff format .`, 프론트엔드에서 `npm run format`입니다. 생성 번들은 `frontend/dist/`이며 `npm run preview`로 정적 화면만 미리 볼 수 있습니다. Debug/Release 구분 대신 개발 서버와 프로덕션 빌드를 사용합니다.
+
+테스트 정의는 백엔드 3개(정상 health, 404, 내부 오류 비공개), 프론트엔드 6개(대기, 성공, 네트워크 오류·재시도, HTTP 오류, 잘못된 응답, 시간 초과)입니다. 실제 수집·실행 결과는 pytest 3 passed / 0 failed / 0 skipped, Vitest 6 passed / 0 failed / 0 skipped입니다. 신규 테스트는 없습니다. 반복 검증은 서로 다른 테스트 수에 합산하지 않습니다.
+
+`pip check`, Ruff check 및 format check, TypeScript, ESLint, Prettier, production build가 통과했습니다. 최초 Prettier 검사에서 10개 파일의 포맷 오류가 발견되어 공식 포맷 명령으로 수정하고 재검사했습니다. 앱과 테스트의 동작은 변경하지 않았습니다. pytest는 전이 의존성과 FastAPI에서 DeprecationWarning 6개를 보고했습니다. 현재 환경의 통과는 모든 Python 버전·플랫폼의 호환성을 보장하지 않습니다.
+
+## 안정화 후 직접 확인할 순서
+
+1. 네트워크 접근이 가능한 실행 환경에서 `curl -I https://pypi.org/simple/fastapi/`와 `curl -I https://registry.npmjs.org/react`로 연결을 확인합니다. TLS 오류가 나면 해당 원인을 조사하고 인증서 검증은 끄지 않습니다.
+2. 위 설치 절차로 의존성을 설치합니다. Python 3.14에서 설치 오류가 있으면 정확한 패키지와 오류를 기록하고 지원 버전을 확인합니다.
+3. 테스트·TypeScript·lint·format·빌드를 실행합니다. 실제 포맷 오류가 있으면 제공된 포맷 명령으로 수정한 뒤 다시 검사합니다.
+4. Uvicorn과 Vite를 별도 터미널에서 실행합니다. 백엔드와 개발 프록시 health 주소 모두 HTTP 200 및 예상 JSON인지 확인합니다.
+5. 브라우저에서 연결 성공을 확인합니다. 백엔드를 Ctrl+C로 종료하고 다시 확인 버튼을 눌러 연결 실패를 확인합니다. 백엔드를 다시 시작하고 버튼을 눌러 성공으로 복구되는지 확인합니다. 이 검증은 Vitest의 fetch 모킹 테스트와 별개입니다.
+6. 의존성 해결이 성공한 환경에서 잠금 파일을 생성하고 `pip check` 및 잠금 파일 기반 재설치를 확인합니다.
+7. 프로젝트 루트에서 `git init` 후 `git status --short`, `git diff --check`를 실행합니다. commit·push는 수행하지 않습니다. 비밀정보 제외 규칙은 추적 전 파일에 적용되며 이미 추적한 비밀은 별도 처리가 필요합니다.
+
+프로젝트 저장소에서 `git check-ignore --no-index`로 `.env`, 가상환경, 캐시, node_modules, dist, 로그, AWS 자격증명과 키 파일 제외를 확인했습니다. `.env.example`과 잠금 파일은 제외되지 않습니다. 아직 추적된 파일과 커밋은 없습니다.
+
+## 현재 구현
+
+- 독립 FastAPI 앱 팩토리와 `GET /api/health`
+- HTTP 오류 및 내부 오류 JSON 응답, 내부 오류 상세는 응답에서 숨김
+- 반응형 InfraWatch 화면과 API 연결 상태, 제한 시간, 재시도
+- localhost 실행 설정, 테스트 정의, 환경 예시 및 민감 파일 제외 규칙
+
+로그에는 내부 예외가 포함될 수 있으므로 향후 실제 데이터가 추가되면 민감정보 마스킹을 검토해야 합니다. 현재 사용자 데이터 저장은 없습니다.
+
+## 로드맵
+
+1. Stage 0 완료: 실제 Safari 장애 복구·안전한 의존성 업데이트·전체 회귀 확인. 후속 유지보수는 FastAPI/Starlette 경고 해결 및 개발 도구 지원 버전 검토.
+2. 단일 서버 자원 수집: psutil 기반 수집 주기, 데이터 단위, API 계약 설계.
+3. 저장 기반: PostgreSQL 모델과 마이그레이션, Docker Compose 로컬 환경.
+4. 대시보드: Recharts와 시계열 조회, 필요성 검토 후 WebSocket.
+5. 운영 기능: 다중 서버 관리, 인증, 장애 감지·알림·이력 분석.
+
+## 설계 참고
+
+안정화 과정에서 `loadEnv`를 `vite`에서 가져오도록 수정했습니다. 설정 API는 [Vite 설정 문서](https://vite.dev/config/)와 [Vitest 설정 문서](https://vitest.dev/config/)를 참고했습니다. 개발 프록시는 [Vite 공식 서버 옵션](https://vite.dev/config/server-options), 앱 테스트와 오류 처리는 [FastAPI 테스트](https://fastapi.tiangolo.com/tutorial/testing/) 및 [오류 처리 문서](https://fastapi.tiangolo.com/tutorial/handling-errors/)를 참고했습니다.
