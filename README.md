@@ -2,17 +2,56 @@
 
 여러 서버의 CPU, 메모리, 디스크, 네트워크 상태를 수집하고 실시간 대시보드, 장애 감지·알림 및 장애 이력 분석을 제공하기 위한 서버 통합 모니터링 웹서비스입니다.
 
-취업용 개발자 포트폴리오로서 API 설계, 테스트, 운영 관측과 단계적인 제품 개발 과정을 보여주는 것이 목적입니다. Stage 0은 실행 구조와 API 연결 기반만 구현합니다. 실제 서버 수치나 가짜 장애 데이터는 표시하지 않습니다.
+취업용 개발자 포트폴리오로서 API 설계, 테스트, 운영 관측과 단계적인 제품 개발 과정을 보여주는 것이 목적입니다. 현재 Stage 1은 로컬 시스템의 실제 CPU·메모리·디스크·uptime을 표시합니다. Stage 0은 실행 구조와 API 연결 기반을 마련한 이전 단계이며, 가짜 운영 수치나 장애 데이터는 표시하지 않습니다.
 
-## 현재 상태
+## Stage 1 구현 상태 (2026-10-14)
+
+psutil 7.2.2 기반 로컬 CPU·메모리·단일 파일시스템·uptime 수집과 `GET /api/metrics`, React 대시보드를 구현했습니다. 기존 `/api/health` 계약과 수동 ‘다시 확인’은 유지합니다. 아래 Stage 0 및 설계 단계 내용은 이전 검증 이력으로 보존합니다.
+
+- CPU: 전체 논리 CPU의 1초 평균. 메모리 사용량: `total - available`.
+- 디스크: 기본 `/`가 속한 단일 파일시스템. macOS APFS에서는 표시 사용률이 `used / total`과 다를 수 있습니다.
+- 백엔드: 시작 즉시 첫 수집, 기본 5초 간격, 캐시 조회 API, 항목별 부분 실패, 3초 수집 timeout 및 15초 이상 stale.
+- 화면: 요청 완료 후 5초 polling, 5초 요청 timeout, 실패 backoff 최대 30초, 중복 요청·언마운트·숨긴 탭·오프라인 처리. 과거 값은 원래 시각과 함께 ‘이전 값’으로 표시합니다.
+- Stage 1 구현 당시 검증 기록: pytest 기본 47 passed / 1 skipped, 실측 포함 전체 48 passed / 0 skipped; Vitest 43 passed. 기존 테스트 9개를 보존했습니다. typecheck·lint·format·build·pip check 및 전체/운영 npm audit(0개)을 확인했습니다.
+
+설계 원본은 [Stage 1 설계](docs/stage1-design.md)에 그대로 보존했고, 실제 결과와 차이·제한은 [Stage 1 구현 및 검증](docs/stage1-implementation.md)에 기록합니다. 이 변경은 아직 커밋하지 않았습니다. 이번 Stage 2 문서 작업에서는 테스트·빌드·실측을 재실행하지 않았습니다.
+
+[Stage 2 설계](docs/stage2-design.md)는 PostgreSQL 이력 저장·기간 조회·과거 그래프의 계획입니다. DB 설치·생성 및 기능 구현은 아직 하지 않았습니다.
+
+### 수집 설정과 실행 제약
+
+기존 설치·실행 명령을 사용합니다. backend는 shell 환경의 `INFRAWATCH_HOST_ID`(기본 `local`), `INFRAWATCH_HOST_LABEL`(기본 `Local system`), `INFRAWATCH_DISK_PATH`(macOS 기본 `/`)를 읽습니다. `.env.example`은 예시이고 파일을 자동 로딩하지 않습니다. 설정 변경 후 백엔드를 재시작하세요. 별칭에는 공개 가능한 이름만 넣습니다. API 응답에는 실제 호스트명·사용자명·디스크 경로가 없습니다.
+
+Uvicorn 수집 worker는 **1개만** 사용합니다. `--reload`의 watcher는 수집하지 않으며 서버 자식 프로세스의 lifespan이 수집기를 관리합니다. 다중 worker에서는 각 프로세스의 캐시·수집기가 분리되므로 지원하지 않습니다. 인증 없는 로컬 개발 범위이며 127.0.0.1 바인딩을 유지합니다.
+
+```sh
+curl --fail http://127.0.0.1:8000/api/metrics
+# 시작 직후 첫 수집 전에는 HTTP 503 METRICS_NOT_READY일 수 있습니다.
+
+cd backend
+# Mock 기반 검사 및 기존 회귀: OS 실측 1개는 기본 skipped
+.venv/bin/python -m pytest
+# 일반 macOS 터미널에서 실제 OS 측정까지 포함
+INFRAWATCH_RUN_LIVE_TESTS=1 .venv/bin/python -m pytest
+```
+
+macOS 샌드박스에서는 psutil boot_time 조회가 PermissionError로 차단될 수 있습니다. 이 경우 uptime을 0으로 대체하지 않고 부분 실패로 표시합니다. Stage 1 구현 당시 일반 사용자 실행에서는 네 자원을 모두 실제 수집했습니다. OS syscall이 영구 정지하면 스레드를 강제 종료할 수 없다는 제한이 있습니다.
+
+## Stage 0 및 설계 단계 검증 이력
 
 2026-10-14 Stage 0 최종 안정화를 완료했습니다. Vite 7.1.7 → 7.3.7, Vitest 3.2.4 → 4.1.11, typescript-eslint 8.44.1 → 8.71.2를 업데이트하고 잠금 파일 기반 `npm ci` 재설치까지 확인했습니다. 최종 전체·운영 npm audit은 모두 **0개**이며, 실제 Safari에서 연결 성공 → 백엔드 중단 후 다시 확인 → 연결 실패 → 백엔드 재시작 후 재시도 → 연결 성공 복구를 확인했습니다.
 
-기존 pytest 3개와 Vitest 6개, pip check, Ruff, TypeScript, ESLint, Prettier 및 production build가 다시 통과했습니다. pytest의 DeprecationWarning 6개는 Starlette의 AnyIO 별칭과 FastAPI의 asyncio.iscoroutinefunction 호출에서 발생하며 억제하지 않았습니다. 후자는 Python 3.16 전 호환성 유지보수가 필요합니다. 상세 위험·패키지별 대응·집계 차이·브라우저 검증·제한은 [최종 안정화 기록](docs/stage0-stabilization.md)을 참고하세요. 현재 환경에서 Stage 0은 종료 가능하며 Stage 1 기능은 추가하지 않았습니다.
+기존 pytest 3개와 Vitest 6개, pip check, Ruff, TypeScript, ESLint, Prettier 및 production build가 다시 통과했습니다. pytest의 DeprecationWarning 6개는 Starlette의 AnyIO 별칭과 FastAPI의 asyncio.iscoroutinefunction 호출에서 발생하며 억제하지 않았습니다. 후자는 Python 3.16 전 호환성 유지보수가 필요합니다. 상세 위험·패키지별 대응·집계 차이·브라우저 검증·제한은 [최종 안정화 기록](docs/stage0-stabilization.md)을 참고하세요. 당시 환경에서 Stage 0은 종료 가능하다고 판단했으며, 해당 안정화 작업에서는 Stage 1 기능을 추가하지 않았습니다.
+
+### Git 기준점과 Stage 1 설계 당시 이력
+
+Stage 0을 `main`의 최초 로컬 커밋 `701b2e934569d3cb327fa913a619296c18eedfcc` (`chore: establish InfraWatch stage 0 baseline`)으로 확정했습니다. 소스·잠금 파일·필수 문서 29개를 포함했고 커밋 전 테스트·품질 검사·빌드가 다시 통과했습니다. 원격 push는 하지 않았습니다.
+
+[Stage 1 설계](docs/stage1-design.md)는 로컬 시스템의 CPU·메모리·단일 파일시스템·uptime·수집 시각과 공개 호스트 별칭을 다룹니다. 기존 `/api/health`와 수동 연결 확인은 유지하고, 새 `/api/metrics`는 5초 주기 수집 스냅샷을 조회하도록 설계했습니다. CPU는 1초 평균, 메모리는 `total - available` 기준이며 메트릭 화면의 자동 갱신·오류·중복 요청 방지를 health와 분리합니다. 이 설계 작성 당시에는 psutil 설치와 Stage 1 기능 구현을 진행하지 않았습니다. 이후 구현·검증은 상단의 현재 상태와 구현 문서를 참고하세요. Stage 1 설계·구현 변경은 baseline 이후 미커밋 상태입니다.
 
 ### 이전 검증 이력 (2026-10-13)
 
-2026-10-13 macOS에서 의존성 설치, 잠금 파일 생성 및 재설치, 전체 테스트·품질 검사·production build를 검증했습니다. PyPI와 npm 레지스트리는 현재 Codex 세션에서 모두 HTTP 200을 반환했습니다. Python 3.14.4에서 설치·pytest·Uvicorn 실행이 성공했습니다.
+2026-10-13 macOS에서 의존성 설치, 잠금 파일 생성 및 재설치, 전체 테스트·품질 검사·production build를 검증했습니다. PyPI와 npm 레지스트리는 당시 Codex 세션에서 모두 HTTP 200을 반환했습니다. Python 3.14.4에서 설치·pytest·Uvicorn 실행이 성공했습니다.
 
 백엔드 및 Vite 프록시의 `/api/health`는 HTTP 200과 계약 JSON을 반환했고, Safari에서 연결 중 → 연결 성공을 확인했습니다. 백엔드 중단 시 프록시 HTTP 500은 확인했으나, 브라우저 제어 도구 오류와 활성 창 변경으로 실제 UI의 연결 실패 → 재시도 복구 확인은 남아 있습니다. 당시에는 이 항목이 미완료였으며, 위 2026-10-14 검증에서 완료했습니다.
 
@@ -20,14 +59,16 @@ Git 저장소는 `.git` 쓰기 권한 승인 후 초기화했습니다. commit·
 
 ## 기술 스택
 
-- 백엔드: Python 3.11 이상, FastAPI, Uvicorn, pytest, Ruff
+- 백엔드: Python 3.11 이상, FastAPI, Uvicorn, psutil 7.2.2, pytest, Ruff
 - 프론트엔드: Node.js 22.12 이상, React, TypeScript, Vite, Vitest, Testing Library
 - 품질 검사: ESLint, Prettier
-- 향후: PostgreSQL, Docker Compose, psutil, Recharts, 필요 시 WebSocket
+- 향후: PostgreSQL, Docker Compose, 과거 그래프용 라이브러리(구현 시 선정), 필요 시 WebSocket
 
 작성 시 확인한 macOS 도구는 Python 3.14.4, Node.js 24.21.0, npm 11.19.0입니다. 시스템 설정은 변경하지 않습니다.
 
 ## 구조
+
+아래는 Stage 0 기반의 구조 요약입니다. Stage 1은 `backend/app/metrics.py`, 메트릭 테스트, `frontend/src/MetricsPanel.tsx`·`useMetrics.ts`·`metrics.ts` 등을 추가했습니다.
 
 ```text
 InfraWatch/
@@ -134,11 +175,13 @@ npm run format:check
 
 포맷 수정은 백엔드에서 `.venv/bin/python -m ruff format .`, 프론트엔드에서 `npm run format`입니다. 생성 번들은 `frontend/dist/`이며 `npm run preview`로 정적 화면만 미리 볼 수 있습니다. Debug/Release 구분 대신 개발 서버와 프로덕션 빌드를 사용합니다.
 
-테스트 정의는 백엔드 3개(정상 health, 404, 내부 오류 비공개), 프론트엔드 6개(대기, 성공, 네트워크 오류·재시도, HTTP 오류, 잘못된 응답, 시간 초과)입니다. 실제 수집·실행 결과는 pytest 3 passed / 0 failed / 0 skipped, Vitest 6 passed / 0 failed / 0 skipped입니다. 신규 테스트는 없습니다. 반복 검증은 서로 다른 테스트 수에 합산하지 않습니다.
+Stage 0 당시 테스트 정의는 백엔드 3개(정상 health, 404, 내부 오류 비공개), 프론트엔드 6개(대기, 성공, 네트워크 오류·재시도, HTTP 오류, 잘못된 응답, 시간 초과)입니다. 실제 수집·실행 결과는 pytest 3 passed / 0 failed / 0 skipped, Vitest 6 passed / 0 failed / 0 skipped입니다. 당시 신규 테스트는 없었습니다. Stage 1은 백엔드 함수 26개/48 cases, 프론트엔드 선언 호출 30개/43 cases로 확장됐으며 결과·skipped 구분은 상단과 구현 문서에 기록돼 있습니다. 반복 검증은 서로 다른 테스트 수에 합산하지 않습니다.
 
-`pip check`, Ruff check 및 format check, TypeScript, ESLint, Prettier, production build가 통과했습니다. 최초 Prettier 검사에서 10개 파일의 포맷 오류가 발견되어 공식 포맷 명령으로 수정하고 재검사했습니다. 앱과 테스트의 동작은 변경하지 않았습니다. pytest는 전이 의존성과 FastAPI에서 DeprecationWarning 6개를 보고했습니다. 현재 환경의 통과는 모든 Python 버전·플랫폼의 호환성을 보장하지 않습니다.
+아래는 Stage 0 검증 이력입니다. `pip check`, Ruff check 및 format check, TypeScript, ESLint, Prettier, production build가 통과했습니다. 최초 Prettier 검사에서 10개 파일의 포맷 오류가 발견되어 공식 포맷 명령으로 수정하고 재검사했습니다. 앱과 테스트의 동작은 변경하지 않았습니다. pytest는 전이 의존성과 FastAPI에서 DeprecationWarning 6개를 보고했습니다. 현재 환경의 통과는 모든 Python 버전·플랫폼의 호환성을 보장하지 않습니다.
 
-## 안정화 후 직접 확인할 순서
+## 안정화 당시 확인 절차 (이력)
+
+아래는 Stage 0 당시 절차이며 현재 재실행 지시가 아닙니다. 저장소는 이미 초기화됐고 잠금 파일도 존재합니다. 기존 저장소를 재초기화하거나 잠금 파일을 이유 없이 다시 생성하지 않습니다.
 
 1. 네트워크 접근이 가능한 실행 환경에서 `curl -I https://pypi.org/simple/fastapi/`와 `curl -I https://registry.npmjs.org/react`로 연결을 확인합니다. TLS 오류가 나면 해당 원인을 조사하고 인증서 검증은 끄지 않습니다.
 2. 위 설치 절차로 의존성을 설치합니다. Python 3.14에서 설치 오류가 있으면 정확한 패키지와 오류를 기록하고 지원 버전을 확인합니다.
@@ -148,23 +191,24 @@ npm run format:check
 6. 의존성 해결이 성공한 환경에서 잠금 파일을 생성하고 `pip check` 및 잠금 파일 기반 재설치를 확인합니다.
 7. 프로젝트 루트에서 `git init` 후 `git status --short`, `git diff --check`를 실행합니다. commit·push는 수행하지 않습니다. 비밀정보 제외 규칙은 추적 전 파일에 적용되며 이미 추적한 비밀은 별도 처리가 필요합니다.
 
-프로젝트 저장소에서 `git check-ignore --no-index`로 `.env`, 가상환경, 캐시, node_modules, dist, 로그, AWS 자격증명과 키 파일 제외를 확인했습니다. `.env.example`과 잠금 파일은 제외되지 않습니다. 아직 추적된 파일과 커밋은 없습니다.
+프로젝트 저장소에서 `git check-ignore --no-index`로 `.env`, 가상환경, 캐시, node_modules, dist, 로그, AWS 자격증명과 키 파일 제외를 확인했습니다. `.env.example`과 잠금 파일은 제외되지 않습니다. 이 내용은 안정화 검증 당시의 상태이며, 현재는 위 Git 기준점으로 소스와 필수 문서를 추적합니다.
 
 ## 현재 구현
 
-- 독립 FastAPI 앱 팩토리와 `GET /api/health`
+- 독립 FastAPI 앱 팩토리와 `GET /api/health`, 캐시 기반 `GET /api/metrics`
 - HTTP 오류 및 내부 오류 JSON 응답, 내부 오류 상세는 응답에서 숨김
 - 반응형 InfraWatch 화면과 API 연결 상태, 제한 시간, 재시도
+- 실제 로컬 자원 수집, 부분 실패·stale 처리 및 자동 갱신 메트릭 패널
 - localhost 실행 설정, 테스트 정의, 환경 예시 및 민감 파일 제외 규칙
 
-로그에는 내부 예외가 포함될 수 있으므로 향후 실제 데이터가 추가되면 민감정보 마스킹을 검토해야 합니다. 현재 사용자 데이터 저장은 없습니다.
+로그에는 내부 예외가 포함될 수 있으므로 향후 실제 데이터가 추가되면 민감정보 마스킹을 검토해야 합니다. 현재 DB 및 메트릭 이력 저장은 없습니다. 최신 값과 화면의 이전 값은 메모리 상태입니다.
 
 ## 로드맵
 
 1. Stage 0 완료: 실제 Safari 장애 복구·안전한 의존성 업데이트·전체 회귀 확인. 후속 유지보수는 FastAPI/Starlette 경고 해결 및 개발 도구 지원 버전 검토.
-2. 단일 서버 자원 수집: psutil 기반 수집 주기, 데이터 단위, API 계약 설계.
-3. 저장 기반: PostgreSQL 모델과 마이그레이션, Docker Compose 로컬 환경.
-4. 대시보드: Recharts와 시계열 조회, 필요성 검토 후 WebSocket.
+2. Stage 1 구현·검증 완료: macOS 로컬 단일 worker 범위. [설계 원본](docs/stage1-design.md)과 [구현·검증 기록](docs/stage1-implementation.md). 변경은 미커밋 상태.
+3. Stage 2 설계: [PostgreSQL 기반 이력 저장·조회](docs/stage2-design.md). DB·migration·저장 writer·조회 API·과거 그래프는 미구현이며 구현은 별도 승인 후 진행.
+4. 후속 대시보드 확장: 집계·장기 보존과 필요성 검토 후 WebSocket. Docker Compose는 필요 시 별도 검토.
 5. 운영 기능: 다중 서버 관리, 인증, 장애 감지·알림·이력 분석.
 
 ## 설계 참고

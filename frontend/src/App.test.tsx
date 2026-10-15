@@ -2,6 +2,9 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { vi, test, expect } from "vitest";
 import App from "./App";
 
+// Keep the original health regressions independent of metrics polling.
+vi.mock("./MetricsPanel", () => ({ default: () => null }));
+
 function response(
   data: unknown = { status: "ok", service: "InfraWatch" },
   ok = true,

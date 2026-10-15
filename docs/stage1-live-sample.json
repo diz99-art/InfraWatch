@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "status": "ok",
+  "host": {
+    "id": "local",
+    "label": "Local system",
+    "platform": "darwin",
+    "scope": "local_system"
+  },
+  "collected_at": "2026-10-14T02:29:14.797Z",
+  "age_seconds": 2.8,
+  "collection_interval_seconds": 5,
+  "metrics": {
+    "cpu": {
+      "usage_percent": 97.9,
+      "measurement_window_ms": 1002
+    },
+    "memory": {
+      "total_bytes": 17179869184,
+      "available_bytes": 4320837632,
+      "used_bytes": 12859031552,
+      "usage_percent": 74.8
+    },
+    "disk": {
+      "target_id": "primary",
+      "total_bytes": 494384795648,
+      "used_bytes": 12457340928,
+      "free_bytes": 118526169088,
+      "usage_percent": 9.5
+    },
+    "uptime": {
+      "seconds": 4271,
+      "booted_at": "2026-10-14T01:18:03.000Z"
+    }
+  },
+  "errors": []
+}

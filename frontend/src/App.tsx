@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { checkHealth } from "./api";
+import MetricsPanel from "./MetricsPanel";
 
 type Status = "loading" | "success" | "error";
 const labels: Record<Status, string> = {
@@ -39,7 +40,7 @@ export default function App() {
         <a className="brand" href="/">
           ◉ InfraWatch
         </a>
-        <span className="stage">STAGE 0 · FOUNDATION</span>
+        <span className="stage">STAGE 1 · LOCAL MONITORING</span>
       </header>
       <section className="intro">
         <p className="eyebrow">INFRASTRUCTURE OBSERVABILITY</p>
@@ -73,11 +74,12 @@ export default function App() {
           </p>
         )}
       </section>
+      <MetricsPanel />
       <section className="foundation">
         <h2>모니터링을 위한 첫 기반</h2>
         <p>
-          현재는 개발 환경과 API 연결을 확인하는 단계입니다. 실제 서버 자원
-          수집은 아직 시작하지 않았습니다.
+          현재 실행 중인 로컬 시스템의 실제 자원을 확인합니다. 다중 서버 수집과
+          장애 알림은 이후 단계에서 제공합니다.
         </p>
         <div className="steps">
           <article>
@@ -86,9 +88,9 @@ export default function App() {
             <p>분리된 앱 구조와 연결 확인</p>
           </article>
           <article>
-            <span>02 / 예정</span>
+            <span>02 / 현재</span>
             <h3>자원 수집</h3>
-            <p>CPU · 메모리 · 디스크 · 네트워크</p>
+            <p>CPU · 메모리 · 디스크 · uptime</p>
           </article>
           <article>
             <span>03 / 예정</span>
