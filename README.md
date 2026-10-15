@@ -14,9 +14,15 @@ psutil 7.2.2 기반 로컬 CPU·메모리·단일 파일시스템·uptime 수집
 - 화면: 요청 완료 후 5초 polling, 5초 요청 timeout, 실패 backoff 최대 30초, 중복 요청·언마운트·숨긴 탭·오프라인 처리. 과거 값은 원래 시각과 함께 ‘이전 값’으로 표시합니다.
 - Stage 1 구현 당시 검증 기록: pytest 기본 47 passed / 1 skipped, 실측 포함 전체 48 passed / 0 skipped; Vitest 43 passed. 기존 테스트 9개를 보존했습니다. typecheck·lint·format·build·pip check 및 전체/운영 npm audit(0개)을 확인했습니다.
 
-설계 원본은 [Stage 1 설계](docs/stage1-design.md)에 그대로 보존했고, 실제 결과와 차이·제한은 [Stage 1 구현 및 검증](docs/stage1-implementation.md)에 기록합니다. 이 변경은 아직 커밋하지 않았습니다. 이번 Stage 2 문서 작업에서는 테스트·빌드·실측을 재실행하지 않았습니다.
+설계 원본은 [Stage 1 설계](docs/stage1-design.md)에 그대로 보존했고, 실제 결과와 차이·제한은 [Stage 1 구현 및 검증](docs/stage1-implementation.md)에 기록합니다. Stage 1 변경은 아래 기준점 커밋으로 보존했습니다. 당시 Stage 2 문서 작업에서는 테스트·빌드·실측을 재실행하지 않았습니다.
 
-[Stage 2 설계](docs/stage2-design.md)는 PostgreSQL 이력 저장·기간 조회·과거 그래프의 계획입니다. DB 설치·생성 및 기능 구현은 아직 하지 않았습니다.
+[Stage 2 설계](docs/stage2-design.md)는 PostgreSQL 이력 저장·기간 조회·과거 그래프의 계획입니다. 설계 작성 당시 DB 설치·생성 및 기능 구현은 하지 않았습니다. 이후 2A 구현은 다음 절에서 구분합니다.
+
+## Stage 2A DB 기반 구현
+
+Stage 1 기준점은 `279c7904ed3384d8b644ce5ca0673aa811e18a13`입니다. PostgreSQL 연결·SQLAlchemy Core 저장 모델·명시적 Alembic migration·서버 UUID 등록/조회·독립 DB 검증 도구를 추가했습니다. DB는 기본 비활성이며 기존 앱 시작과 health/metrics 요청은 DB에 접속하지 않습니다. **실제 메트릭 writer·이력 조회·그래프는 아직 없습니다.**
+
+구체적인 연결 설정·최소 권한·명시적 명령·독립 테스트 및 제한은 [Stage 2A 구현 기록](docs/stage2a-implementation.md)을 참고하세요. 기존 Stage 1 및 Stage 2 설계 문서의 ‘당시 미구현·미커밋’ 설명은 작성 당시 이력입니다. 이번 변경은 기준점 이후 미커밋입니다.
 
 ### 수집 설정과 실행 제약
 
@@ -47,7 +53,7 @@ macOS 샌드박스에서는 psutil boot_time 조회가 PermissionError로 차단
 
 Stage 0을 `main`의 최초 로컬 커밋 `701b2e934569d3cb327fa913a619296c18eedfcc` (`chore: establish InfraWatch stage 0 baseline`)으로 확정했습니다. 소스·잠금 파일·필수 문서 29개를 포함했고 커밋 전 테스트·품질 검사·빌드가 다시 통과했습니다. 원격 push는 하지 않았습니다.
 
-[Stage 1 설계](docs/stage1-design.md)는 로컬 시스템의 CPU·메모리·단일 파일시스템·uptime·수집 시각과 공개 호스트 별칭을 다룹니다. 기존 `/api/health`와 수동 연결 확인은 유지하고, 새 `/api/metrics`는 5초 주기 수집 스냅샷을 조회하도록 설계했습니다. CPU는 1초 평균, 메모리는 `total - available` 기준이며 메트릭 화면의 자동 갱신·오류·중복 요청 방지를 health와 분리합니다. 이 설계 작성 당시에는 psutil 설치와 Stage 1 기능 구현을 진행하지 않았습니다. 이후 구현·검증은 상단의 현재 상태와 구현 문서를 참고하세요. Stage 1 설계·구현 변경은 baseline 이후 미커밋 상태입니다.
+[Stage 1 설계](docs/stage1-design.md)는 로컬 시스템의 CPU·메모리·단일 파일시스템·uptime·수집 시각과 공개 호스트 별칭을 다룹니다. 기존 `/api/health`와 수동 연결 확인은 유지하고, 새 `/api/metrics`는 5초 주기 수집 스냅샷을 조회하도록 설계했습니다. CPU는 1초 평균, 메모리는 `total - available` 기준이며 메트릭 화면의 자동 갱신·오류·중복 요청 방지를 health와 분리합니다. 이 설계 작성 당시에는 psutil 설치와 Stage 1 기능 구현을 진행하지 않았습니다. 이후 구현·검증은 상단의 현재 상태와 구현 문서를 참고하세요. Stage 1 설계·구현 변경은 당시 미커밋이었으며 이후 아래 Stage 1 기준점으로 보존했습니다.
 
 ### 이전 검증 이력 (2026-10-13)
 
@@ -206,8 +212,8 @@ Stage 0 당시 테스트 정의는 백엔드 3개(정상 health, 404, 내부 오
 ## 로드맵
 
 1. Stage 0 완료: 실제 Safari 장애 복구·안전한 의존성 업데이트·전체 회귀 확인. 후속 유지보수는 FastAPI/Starlette 경고 해결 및 개발 도구 지원 버전 검토.
-2. Stage 1 구현·검증 완료: macOS 로컬 단일 worker 범위. [설계 원본](docs/stage1-design.md)과 [구현·검증 기록](docs/stage1-implementation.md). 변경은 미커밋 상태.
-3. Stage 2 설계: [PostgreSQL 기반 이력 저장·조회](docs/stage2-design.md). DB·migration·저장 writer·조회 API·과거 그래프는 미구현이며 구현은 별도 승인 후 진행.
+2. Stage 1 구현·검증 완료: macOS 로컬 단일 worker 범위. [설계 원본](docs/stage1-design.md)과 [구현·검증 기록](docs/stage1-implementation.md). 기준점 `279c7904ed3384d8b644ce5ca0673aa811e18a13`으로 보존.
+3. Stage 2A: [DB 기반 구현](docs/stage2a-implementation.md). [전체 설계](docs/stage2-design.md)의 2A 범위만 구현하며 실제 writer·큐·조회 API·과거 그래프·자동 삭제·백업 복구는 후속 범위입니다.
 4. 후속 대시보드 확장: 집계·장기 보존과 필요성 검토 후 WebSocket. Docker Compose는 필요 시 별도 검토.
 5. 운영 기능: 다중 서버 관리, 인증, 장애 감지·알림·이력 분석.
 
