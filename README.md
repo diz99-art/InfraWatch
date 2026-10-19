@@ -2,7 +2,48 @@
 
 여러 서버의 CPU, 메모리, 디스크, 네트워크 상태를 수집하고 실시간 대시보드, 장애 감지·알림 및 장애 이력 분석을 제공하기 위한 서버 통합 모니터링 웹서비스입니다.
 
-취업용 개발자 포트폴리오로서 API 설계, 테스트, 운영 관측과 단계적인 제품 개발 과정을 보여주는 것이 목적입니다. 현재 Stage 1은 로컬 시스템의 실제 CPU·메모리·디스크·uptime을 표시합니다. Stage 0은 실행 구조와 API 연결 기반을 마련한 이전 단계이며, 가짜 운영 수치나 장애 데이터는 표시하지 않습니다.
+System Engineer · IDC 운영 · DevOps 직무를 목표로 하는 개발자 포트폴리오입니다. API 설계, 테스트, 운영 관측과 단계적인 제품 개발 과정을 보여주는 것이 목적입니다. 현재 Stage 1은 로컬 시스템의 실제 CPU·메모리·디스크·uptime을 표시합니다. Stage 0은 실행 구조와 API 연결 기반을 마련한 이전 단계이며, 가짜 운영 수치나 장애 데이터는 표시하지 않습니다.
+
+## Stage 2A까지의 범위
+
+| 구분 | 구현 상태 |
+| --- | --- |
+| Stage 1 완료 | FastAPI health·metrics API, React 화면, 실제 CPU·메모리·디스크·uptime 수집, 기본 5초 수집·요청 완료 후 5초 갱신, 부분 실패·stale 처리 |
+| Stage 2A 완료 | PostgreSQL 연결 기반, 서버 UUID 등록·조회, 저장 스키마·제약·인덱스, Alembic migration, 독립 DB 테스트 도구 |
+| Stage 2B 미구현 | 메트릭 자동 DB writer, 메모리 큐·저장 재시도 |
+| Stage 2C 미구현 | 과거 이력 조회 API, React 이력 그래프 |
+| 후속 미구현 | 다중 Linux 서버 수집, 자동 장애 알림, 운영 배포, 자동 삭제·백업 복원 |
+
+실행 구조는 브라우저 → Vite 개발 서버의 `/api` 프록시 → FastAPI → psutil 수집 캐시입니다. PostgreSQL은 명시적인 CLI·테스트 경계에서만 사용합니다. 프론트엔드와 백엔드는 독립 프로세스이며 프로덕션에서는 별도 역방향 프록시가 필요합니다. 인증 없는 로컬 단일 worker 범위로, 운영 환경 지원 완료를 의미하지 않습니다.
+
+설계·과거 검증 기록은 `docs/`에 보존했습니다. 아래 과거 기록은 당시 결과이며 공개 준비 과정의 최신 검증과 구분합니다.
+
+## 공개 준비 검증 (2026-10-19)
+
+별도 공개용 복사본에서 잠금 파일로 새 가상환경 설치와 `npm ci`를 실행했습니다. 기능 코드는 원본과 바이트 단위로 동일합니다. 과거 검증 문서는 수정하지 않았습니다.
+
+| 검사 | 이번 실제 결과 |
+| --- | --- |
+| 백엔드 기본 pytest | 함수 선언 45개 → 93 cases 수집, 59 passed / 0 failed / 34 skipped |
+| Stage 1 OS 실측 | 샌드박스 uptime 제한으로 최초 1 failed, 일반 사용자 권한 재실행 1 passed |
+| 백엔드 고유 case 기준 | 60 passed / 최종 미해결 실패 0 / PostgreSQL 33 cases 미실행; 반복 실행을 더하지 않음 |
+| Stage 1 회귀 | 기존 48 cases 중 기본 47개와 별도 OS 실측 1개 통과 |
+| Stage 2A | 비DB 12 cases 통과; 실제 PostgreSQL 33 cases는 실행 파일 부재로 skipped |
+| DB migration | 오프라인 SQL 생성 통과; 실제 DB upgrade·재시작 보존 검사는 이번에 미실행 |
+| pip check / Ruff check·format | 모두 통과, Python 15개 파일 포맷 일치 |
+| 프론트엔드 Vitest | 선언 호출 30개 → 43 cases 실행, 43 passed / 0 failed / 0 skipped |
+| TypeScript / ESLint / Prettier | 모두 통과 |
+| Production build | 통과, 33 modules, JS 197.69 kB / gzip 63.25 kB |
+| npm audit 전체 / 운영 의존성 | 각각 취약점 0개 |
+
+백엔드 기본 실행의 DeprecationWarning 38개는 남아 있습니다. Debug 전용 빌드 명령은 없으며 개발 서버·브라우저 UI는 이번에 재실행하지 않았습니다. 과거 PostgreSQL 18.6 전체 93 passed 기록은 [Stage 2A 검증 문서](docs/stage2a-implementation.md)에 보존했으며 이번 결과와 구분합니다.
+
+독립 DB 검증이 필요한 경우 PostgreSQL 18 실행 파일을 준비한 뒤 아래 명령을 사용합니다. 기존 사용자 DB에 연결하지 않고 새 임시 클러스터를 만들며, 종료 후 파일은 보존합니다.
+
+```sh
+cd backend
+.venv/bin/python scripts/run_db_tests.py --pg-bin /path/to/postgresql18/bin --all
+```
 
 ## Stage 1 구현 상태 (2026-10-14)
 
@@ -22,7 +63,7 @@ psutil 7.2.2 기반 로컬 CPU·메모리·단일 파일시스템·uptime 수집
 
 Stage 1 기준점은 `279c7904ed3384d8b644ce5ca0673aa811e18a13`입니다. PostgreSQL 연결·SQLAlchemy Core 저장 모델·명시적 Alembic migration·서버 UUID 등록/조회·독립 DB 검증 도구를 추가했습니다. DB는 기본 비활성이며 기존 앱 시작과 health/metrics 요청은 DB에 접속하지 않습니다. **실제 메트릭 writer·이력 조회·그래프는 아직 없습니다.**
 
-구체적인 연결 설정·최소 권한·명시적 명령·독립 테스트 및 제한은 [Stage 2A 구현 기록](docs/stage2a-implementation.md)을 참고하세요. 기존 Stage 1 및 Stage 2 설계 문서의 ‘당시 미구현·미커밋’ 설명은 작성 당시 이력입니다. 이번 변경은 기준점 이후 미커밋입니다.
+구체적인 연결 설정·최소 권한·명시적 명령·독립 테스트 및 제한은 [Stage 2A 구현 기록](docs/stage2a-implementation.md)을 참고하세요. 기존 Stage 1 및 Stage 2 설계 문서의 ‘당시 미구현·미커밋’ 설명은 작성 당시 이력입니다. Stage 2A는 커밋으로 보존되어 있습니다. 공개용 이력은 개인 이메일을 GitHub noreply 주소로 바꾼 별도 복사본이며, 문서에 남아 있는 원본 커밋 해시는 원본의 검증 이력을 가리킵니다.
 
 ### 수집 설정과 실행 제약
 
@@ -66,15 +107,16 @@ Git 저장소는 `.git` 쓰기 권한 승인 후 초기화했습니다. commit·
 ## 기술 스택
 
 - 백엔드: Python 3.11 이상, FastAPI, Uvicorn, psutil 7.2.2, pytest, Ruff
+- DB 기반: PostgreSQL 18, SQLAlchemy Core 2.0.54, psycopg 3.3.6, Alembic 1.20.0
 - 프론트엔드: Node.js 22.12 이상, React, TypeScript, Vite, Vitest, Testing Library
 - 품질 검사: ESLint, Prettier
-- 향후: PostgreSQL, Docker Compose, 과거 그래프용 라이브러리(구현 시 선정), 필요 시 WebSocket
+- 향후: Docker Compose, 과거 그래프용 라이브러리(구현 시 선정), 필요 시 WebSocket
 
 작성 시 확인한 macOS 도구는 Python 3.14.4, Node.js 24.21.0, npm 11.19.0입니다. 시스템 설정은 변경하지 않습니다.
 
 ## 구조
 
-아래는 Stage 0 기반의 구조 요약입니다. Stage 1은 `backend/app/metrics.py`, 메트릭 테스트, `frontend/src/MetricsPanel.tsx`·`useMetrics.ts`·`metrics.ts` 등을 추가했습니다.
+아래는 Stage 0 기반의 구조 요약입니다. Stage 2A는 `db.py`·`schema.py`·`servers.py`·`database_cli.py`, `migrations/`, 독립 DB 테스트를 추가했습니다. Stage 1은 `backend/app/metrics.py`, 메트릭 테스트, `frontend/src/MetricsPanel.tsx`·`useMetrics.ts`·`metrics.ts` 등을 추가했습니다.
 
 ```text
 InfraWatch/
@@ -94,31 +136,44 @@ InfraWatch/
 └── .gitignore
 ```
 
-## 설치 및 잠금 파일 생성
+## 처음 설치하기
 
-프로젝트 루트에서 실행합니다. `.env`는 선택 사항이며 기본 주소로 실행하면 복사할 필요가 없습니다.
+Git, Python 3.11 이상, Node.js 22.12 이상이 필요합니다. 실제 검증 환경은 macOS arm64 / Python 3.14.4 / Node.js 24.21.0입니다. PostgreSQL 없이도 실시간 화면을 실행할 수 있습니다.
 
 ```sh
+git clone https://github.com/diz99-art/InfraWatch.git
+cd InfraWatch
 python3 -m venv backend/.venv
-backend/.venv/bin/python -m pip install -r backend/requirements.in
-# 신규 의존성을 확인한 후 전체 전이 의존성을 잠급니다.
-backend/.venv/bin/python -m pip freeze > backend/requirements.lock
-
-cd frontend
-npm install
-# npm install이 package-lock.json을 생성합니다.
-cd ..
-```
-
-잠금 파일 생성 후 팀에서 검토하고 Git에 포함하세요. 이후 깨끗한 환경에서는 다음 명령을 사용합니다.
-
-```sh
 backend/.venv/bin/python -m pip install -r backend/requirements.lock
 cd frontend
 npm ci
+cd ..
 ```
 
-`requirements.in`과 `package.json`은 직접 의존성 목록이며, `requirements.lock`과 `package-lock.json`은 실제 해결된 전이 의존성을 포함합니다. 두 잠금 파일 기반 재설치를 확인했습니다. Python의 플랫폼별 패키지는 지원 대상 환경에서 다시 설치 검증해야 합니다.
+이후 명령의 프로젝트 루트는 방금 복제한 `InfraWatch` 폴더입니다. 터미널 두 개에서 아래 백엔드와 프론트엔드를 각각 실행하세요. `.env` 파일은 자동으로 읽지 않으므로 기본 설정에서는 복사할 필요가 없습니다.
+
+`requirements.in`·`package.json`은 직접 의존성 목록이고, `requirements.lock`·`package-lock.json`은 전이 의존성까지 고정한 설치 기준입니다. 일반 설치에서는 잠금 파일을 다시 생성하지 않습니다. 의존성 변경 시에만 설치·해결 결과로 갱신하고 검증합니다. 다른 Python 버전·플랫폼은 별도 설치 검증이 필요합니다.
+
+## PostgreSQL 설정과 migration
+
+DB는 기본 비활성입니다. Stage 2A는 연결·저장 스키마·서버 UUID 등록 기반이며 **수집 메트릭을 DB에 자동 저장하지 않습니다.** 기존 앱과 health/metrics API는 DB에 접속하지 않습니다.
+
+1. PostgreSQL 18을 별도로 준비하고, 관리자가 InfraWatch 전용 빈 DB와 migration·등록·runtime 역할을 준비합니다. 기존 사용자 DB를 초기화하거나 공유 DB 권한을 일괄 변경하지 마세요. 역할별 최소 권한은 [Stage 2A 운영 경계](docs/stage2a-implementation.md#최소-권한)를 따릅니다.
+2. `backend` 디렉터리에서 `INFRAWATCH_DB_ENABLED=1`을 export하고, 비공개 셸 환경에 `INFRAWATCH_DATABASE_URL`을 설정합니다. SQLAlchemy 드라이버는 `postgresql+psycopg`이며 사용자·호스트·DB 이름이 필요합니다. query 옵션은 지원하지 않습니다. 실제 접속 문자열을 문서·명령 이력·VITE_ 변수에 기록하지 마세요.
+3. migration 역할의 환경에서 대상 DB를 확인한 뒤 아래 명령을 실행합니다.
+
+```sh
+cd backend
+# DB에 접속하지 않고 migration SQL만 확인
+.venv/bin/python -m alembic upgrade head --sql
+# 전용 DB와 migration 역할의 비공개 환경이 준비된 경우에만 실행
+.venv/bin/python -m app.database_cli upgrade
+.venv/bin/python -m app.database_cli check
+```
+
+현재 revision은 `0001_stage2a`입니다. migration은 명시적으로 실행하며 앱 시작 시 자동 실행하지 않습니다. 동일 head에 재실행할 수 있고 downgrade는 데이터 손실 방지를 위해 거부합니다.
+
+서버 등록은 등록 역할로 전환한 뒤 실행합니다. `--server-id`에는 한 번 생성해 보존한 UUID를 사용합니다. 전체 인수는 `.venv/bin/python -m app.database_cli register --help`로 확인하고, 조회는 `.venv/bin/python -m app.database_cli lookup --public-id local`을 사용합니다. UUID·별칭 충돌은 자동 덮어쓰지 않습니다. 운영 TLS·백업 복원·실제 부하 검증은 남아 있습니다.
 
 ## 실행
 
@@ -167,6 +222,7 @@ curl --fail http://127.0.0.1:5173/api/health
 ```sh
 cd backend
 .venv/bin/python -m pytest
+.venv/bin/python -m pip check
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
 cd ../frontend
@@ -207,7 +263,7 @@ Stage 0 당시 테스트 정의는 백엔드 3개(정상 health, 404, 내부 오
 - 실제 로컬 자원 수집, 부분 실패·stale 처리 및 자동 갱신 메트릭 패널
 - localhost 실행 설정, 테스트 정의, 환경 예시 및 민감 파일 제외 규칙
 
-로그에는 내부 예외가 포함될 수 있으므로 향후 실제 데이터가 추가되면 민감정보 마스킹을 검토해야 합니다. 현재 DB 및 메트릭 이력 저장은 없습니다. 최신 값과 화면의 이전 값은 메모리 상태입니다.
+로그에는 내부 예외가 포함될 수 있으므로 향후 실제 데이터가 추가되면 민감정보 마스킹을 검토해야 합니다. DB 연결·저장 스키마·명시적 migration·서버 UUID 등록/조회는 구현되어 있습니다. 수집 메트릭의 자동 DB 저장은 없으며 최신 값과 화면의 이전 값은 메모리 상태입니다.
 
 ## 로드맵
 
